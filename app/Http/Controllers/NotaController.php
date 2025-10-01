@@ -39,10 +39,14 @@ class NotaController extends Controller
                             }
 
                             Aturan:
+                            - Semua angka harga gunakan format ribuan Indonesia (contoh: 53.050 → 53050).
+                            - Jangan ubah titik ribuan menjadi koma desimal.
                             - Ambil tanggal cetak struk untuk field 'tanggal'.
                             - Ambil nilai TOTAL/Jumlah Bayar di baris paling bawah struk untuk field 'total'.
                             - Setiap produk diambil dari baris item belanja.
-                            - Jangan tulis penjelasan apapun selain JSON."
+                            - Jangan tulis penjelasan apapun selain JSON.
+                            - Hanya ambil item utama yang memiliki harga.
+                            - Abaikan sub-item/bawaan paket (seperti rice, egg, chili sauce) yang harganya 0."
                         ],
                         [
                             "inline_data" => [
