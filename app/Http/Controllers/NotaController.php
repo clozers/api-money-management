@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\Nota;
 use App\Models\NotaItem;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\DB;
 
 class NotaController extends Controller
 {
@@ -20,7 +21,7 @@ class NotaController extends Controller
         $mimeType    = $request->file('nota')->getMimeType();
         $base64Image = base64_encode(file_get_contents($filePath));
 
-        // Panggil Gemini API
+        // Call Gemini API
         $response = Http::post(
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" . env('GEMINI_API_KEY'),
             [
@@ -43,10 +44,9 @@ class NotaController extends Controller
                             - Jangan ubah titik ribuan menjadi koma desimal.
                             - Ambil tanggal cetak struk untuk field 'tanggal'.
                             - Ambil nilai TOTAL/Jumlah Bayar di baris paling bawah struk untuk field 'total'.
-                            - Setiap produk diambil dari baris item belanja.
-                            - Jangan tulis penjelasan apapun selain JSON.
                             - Hanya ambil item utama yang memiliki harga.
-                            - Abaikan sub-item/bawaan paket (seperti rice, egg, chili sauce) yang harganya 0."
+                            - Abaikan sub-item/bawaan paket (seperti rice, egg, chili sauce) yang harganya 0.
+                            - Jangan tulis penjelasan apapun selain JSON."
                         ],
                         [
                             "inline_data" => [
@@ -59,15 +59,23 @@ class NotaController extends Controller
             ]
         );
 
+
+        if (!$response->successful()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memproses OCR. Silakan coba lagi.'
+            ], 500);
+        }
+
         $result = $response->json();
         $raw    = $result['candidates'][0]['content']['parts'][0]['text'] ?? '{}';
 
-        // Bersihin kalau ada ```json ... ```
+
         $raw = preg_replace('/```(json)?/i', '', $raw);
         $raw = str_replace('```', '', $raw);
         $raw = trim($raw);
 
-        // Ambil hanya isi JSON {...}
+
         if (preg_match('/\{.*\}/s', $raw, $matches)) {
             $jsonText = $matches[0];
         } else {
@@ -80,21 +88,28 @@ class NotaController extends Controller
             $aiData = ["tanggal" => now()->toDateString(), "total" => 0, "items" => []];
         }
 
-        // Simpan ke DB
-        $nota = Nota::create([
-            'filename' => $storedPath,
-            'tanggal'  => $aiData['tanggal'] ?? now()->toDateString(),
-            'total'    => $aiData['total'] ?? 0,
-        ]);
-
-        foreach ($aiData['items'] ?? [] as $item) {
-            NotaItem::create([
-                'nota_id' => $nota->id,
-                'nama'    => $item['nama'] ?? '-',
-                'qty'     => $item['qty'] ?? 1,
-                'harga'   => $item['harga'] ?? 0,
-            ]);
+        foreach ($aiData['items'] ?? [] as &$item) {
+            if (($item['harga'] ?? 0) < 1000 && ($item['harga'] ?? 0) > 0) {
+                $item['harga'] = $item['harga'] * 1000;
+            }
         }
+
+        DB::transaction(function () use ($aiData, $storedPath, &$nota) {
+            $nota = Nota::create([
+                'filename' => $storedPath,
+                'tanggal'  => $aiData['tanggal'] ?? now()->toDateString(),
+                'total'    => $aiData['total'] ?? 0,
+            ]);
+
+            foreach ($aiData['items'] ?? [] as $item) {
+                NotaItem::create([
+                    'nota_id' => $nota->id,
+                    'nama'    => $item['nama'] ?? '-',
+                    'qty'     => $item['qty'] ?? 1,
+                    'harga'   => $item['harga'] ?? 0,
+                ]);
+            }
+        });
 
         return response()->json([
             'success' => true,
