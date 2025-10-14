@@ -8,7 +8,7 @@ use App\Models\NotaItem;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 
-class NotaController extends Controller
+class ScantransaksiController extends Controller
 {
     public function scanNota(Request $request)
     {
@@ -21,7 +21,7 @@ class NotaController extends Controller
         $mimeType    = $request->file('nota')->getMimeType();
         $base64Image = base64_encode(file_get_contents($filePath));
 
-        // Call Gemini API
+        // 🔹 Kirim ke Gemini API
         $response = Http::post(
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" . env('GEMINI_API_KEY'),
             [
@@ -32,7 +32,6 @@ class NotaController extends Controller
                             Ekstrak detail dari gambar ini dan kembalikan HANYA JSON valid (tanpa teks tambahan).
                             Format:
                             {
-                              \"tanggal\": \"YYYY-MM-DD\",
                               \"total\": number,
                               \"items\": [
                                 {\"nama\": string, \"qty\": number, \"harga\": number}
@@ -42,7 +41,6 @@ class NotaController extends Controller
                             Aturan:
                             - Semua angka harga gunakan format ribuan Indonesia (contoh: 53.050 → 53050).
                             - Jangan ubah titik ribuan menjadi koma desimal.
-                            - Ambil tanggal cetak struk untuk field 'tanggal'.
                             - Ambil nilai TOTAL/Jumlah Bayar di baris paling bawah struk untuk field 'total'.
                             - Hanya ambil item utama yang memiliki harga.
                             - Abaikan sub-item/bawaan paket (seperti rice, egg, chili sauce) yang harganya 0.
@@ -59,7 +57,6 @@ class NotaController extends Controller
             ]
         );
 
-
         if (!$response->successful()) {
             return response()->json([
                 'success' => false,
@@ -67,14 +64,13 @@ class NotaController extends Controller
             ], 500);
         }
 
+        // 🔹 Ambil hasil dari Gemini
         $result = $response->json();
         $raw    = $result['candidates'][0]['content']['parts'][0]['text'] ?? '{}';
-
 
         $raw = preg_replace('/```(json)?/i', '', $raw);
         $raw = str_replace('```', '', $raw);
         $raw = trim($raw);
-
 
         if (preg_match('/\{.*\}/s', $raw, $matches)) {
             $jsonText = $matches[0];
@@ -85,19 +81,22 @@ class NotaController extends Controller
         $aiData = json_decode($jsonText, true);
         if (!$aiData) {
             \Log::error("Gemini JSON parse gagal:", [$raw]);
-            $aiData = ["tanggal" => now()->toDateString(), "total" => 0, "items" => []];
+            $aiData = ["total" => 0, "items" => []];
         }
 
+        // 🔹 Perbaiki harga (kalau ada yang ribuan salah)
         foreach ($aiData['items'] ?? [] as &$item) {
             if (($item['harga'] ?? 0) < 1000 && ($item['harga'] ?? 0) > 0) {
                 $item['harga'] = $item['harga'] * 1000;
             }
         }
 
-        DB::transaction(function () use ($aiData, $storedPath, &$nota) {
+        // 🔹 Simpan ke database
+        DB::transaction(function () use ($aiData, $storedPath, &$nota, $request) {
             $nota = Nota::create([
+                'user_id' => $request->user()->id,
                 'filename' => $storedPath,
-                'tanggal'  => $aiData['tanggal'] ?? now()->toDateString(),
+                'tanggal'  => now()->format('Y-m-d'), // ✅ langsung pakai tanggal saat scan
                 'total'    => $aiData['total'] ?? 0,
             ]);
 
