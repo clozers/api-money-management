@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\Nota;
-use App\Models\NotaItem;
+use App\Models\Pengeluaran;
+use App\Models\PengeluaranItem;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 
@@ -21,7 +21,7 @@ class ScantransaksiController extends Controller
         $mimeType    = $request->file('nota')->getMimeType();
         $base64Image = base64_encode(file_get_contents($filePath));
 
-        // 🔹 Kirim ke Gemini API
+        // 🔹 Panggil Gemini API
         $response = Http::post(
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" . env('GEMINI_API_KEY'),
             [
@@ -64,7 +64,6 @@ class ScantransaksiController extends Controller
             ], 500);
         }
 
-        // 🔹 Ambil hasil dari Gemini
         $result = $response->json();
         $raw    = $result['candidates'][0]['content']['parts'][0]['text'] ?? '{}';
 
@@ -84,35 +83,58 @@ class ScantransaksiController extends Controller
             $aiData = ["total" => 0, "items" => []];
         }
 
-        // 🔹 Perbaiki harga (kalau ada yang ribuan salah)
+        // Koreksi harga terlalu kecil (misal hasil OCR 53 → jadi 53000)
         foreach ($aiData['items'] ?? [] as &$item) {
             if (($item['harga'] ?? 0) < 1000 && ($item['harga'] ?? 0) > 0) {
                 $item['harga'] = $item['harga'] * 1000;
             }
         }
 
-        // 🔹 Simpan ke database
-        DB::transaction(function () use ($aiData, $storedPath, &$nota, $request) {
-            $nota = Nota::create([
+        try {
+            DB::beginTransaction();
+
+            // 🔹 Simpan ke tabel nota
+            $nota = Pengeluaran::create([
                 'user_id' => $request->user()->id,
                 'filename' => $storedPath,
-                'tanggal'  => now()->format('Y-m-d'), // ✅ langsung pakai tanggal saat scan
+                'tanggal'  => now()->format('Y-m-d'),
                 'total'    => $aiData['total'] ?? 0,
             ]);
 
+            // 🔹 Simpan item nota
             foreach ($aiData['items'] ?? [] as $item) {
-                NotaItem::create([
+                PengeluaranItem::create([
                     'nota_id' => $nota->id,
                     'nama'    => $item['nama'] ?? '-',
                     'qty'     => $item['qty'] ?? 1,
                     'harga'   => $item['harga'] ?? 0,
                 ]);
             }
-        });
 
-        return response()->json([
-            'success' => true,
-            'nota'    => $nota->load('items')
-        ]);
+            // 🔽 Kurangi gaji user sesuai total pengeluaran
+            $user = $request->user();
+            $totalPengeluaran = $aiData['total'] ?? 0;
+            $sisaGaji = $user->gaji_bulanan - $totalPengeluaran;
+
+            if ($sisaGaji < 0) $sisaGaji = 0;
+
+            $user->update(['gaji_bulanan' => $sisaGaji]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Scan nota berhasil, data disimpan dan gaji dikurangi.',
+                'nota' => $nota->load('items'),
+                'sisa_gaji' => $sisaGaji,
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menyimpan hasil scan',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 }

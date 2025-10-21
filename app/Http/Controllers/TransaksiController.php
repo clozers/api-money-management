@@ -3,13 +3,12 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\Nota;
-use App\Models\NotaItem;
+use App\Models\Pengeluaran;
+use App\Models\PengeluaranItem;
 use Illuminate\Support\Facades\DB;
 
 class TransaksiController extends Controller
 {
-    // ✅ Tambah transaksi manual (dengan item)
     public function storeTransaksi(Request $request)
     {
         $request->validate([
@@ -25,9 +24,9 @@ class TransaksiController extends Controller
             DB::beginTransaction();
 
             // Simpan nota utama
-            $nota = Nota::create([
+            $nota = Pengeluaran::create([
                 'user_id' => $request->user()->id,
-                'filename' => '', // kosong karena manual
+                'filename' => '',
                 'tanggal' => $request->tanggal,
                 'total' => $request->total,
             ]);
@@ -35,7 +34,7 @@ class TransaksiController extends Controller
             // Simpan item jika ada
             if ($request->has('items')) {
                 foreach ($request->items as $item) {
-                    NotaItem::create([
+                    PengeluaranItem::create([
                         'nota_id' => $nota->id,
                         'nama' => $item['nama'],
                         'qty' => $item['qty'],
@@ -44,12 +43,22 @@ class TransaksiController extends Controller
                 }
             }
 
+            // 🔽 Kurangi gaji user
+            $user = $request->user();
+            $sisaGaji = $user->gaji_bulanan - $request->total;
+
+            // Pastikan tidak minus
+            if ($sisaGaji < 0) $sisaGaji = 0;
+
+            $user->update(['gaji_bulanan' => $sisaGaji]);
+
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Transaksi berhasil disimpan',
+                'message' => 'Transaksi berhasil disimpan dan gaji bulanan dikurangi.',
                 'nota' => $nota->load('items'),
+                'sisa_gaji' => $sisaGaji,
             ]);
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -61,6 +70,7 @@ class TransaksiController extends Controller
         }
     }
 
+
     // ✅ Update transaksi milik user
     public function updateTransaksi(Request $request, $id)
     {
@@ -69,7 +79,7 @@ class TransaksiController extends Controller
             'total' => 'nullable|integer|min:0',
         ]);
 
-        $nota = Nota::where('id', $id)
+        $nota = Pengeluaran::where('id', $id)
             ->where('user_id', $request->user()->id)
             ->first();
 
@@ -85,7 +95,7 @@ class TransaksiController extends Controller
     // ✅ Hapus transaksi milik user
     public function deleteTransaksi(Request $request, $id)
     {
-        $nota = Nota::where('id', $id)
+        $nota = Pengeluaran::where('id', $id)
             ->where('user_id', $request->user()->id)
             ->first();
 
@@ -101,7 +111,7 @@ class TransaksiController extends Controller
     // ✅ Ambil semua nota milik user login
     public function getTransaksi(Request $request)
     {
-        $notas = Nota::with('items')
+        $notas = Pengeluaran::with('items')
             ->where('user_id', $request->user()->id)
             ->orderBy('tanggal', 'desc')
             ->get();

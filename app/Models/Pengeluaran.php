@@ -4,13 +4,13 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class Nota extends Model
+class Pengeluaran extends Model
 {
     protected $fillable = ['user_id', 'filename', 'tanggal', 'total'];
 
     public function items()
     {
-        return $this->hasMany(NotaItem::class);
+        return $this->hasMany(PengeluaranItem::class);
     }
     public function user()
     {
