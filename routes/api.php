@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\HomeController;
 use App\Http\Controllers\ScantransaksiController;
 use App\Http\Controllers\TransaksiController;
 
@@ -22,7 +23,7 @@ Route::middleware('auth:sanctum')->group(function () {
             'message' => 'Gunakan metode POST untuk upload nota.'
         ]);
     });
-
+    Route::get('/home', [HomeController::class, 'index']);
     // CRUD Transaksi manual
     Route::prefix('transaksi')->group(function () {
         Route::get('/', [TransaksiController::class, 'getTransaksi']);

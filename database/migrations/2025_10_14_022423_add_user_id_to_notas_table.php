@@ -8,14 +8,14 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('notas', function (Blueprint $table) {
+        Schema::table('pengeluarans', function (Blueprint $table) {
             $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
         });
     }
 
     public function down(): void
     {
-        Schema::table('notas', function (Blueprint $table) {
+        Schema::table('pengeluarans', function (Blueprint $table) {
             $table->dropForeign(['user_id']);
             $table->dropColumn('user_id');
         });

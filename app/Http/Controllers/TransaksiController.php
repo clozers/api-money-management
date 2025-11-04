@@ -9,11 +9,13 @@ use Illuminate\Support\Facades\DB;
 
 class TransaksiController extends Controller
 {
+    // ✅ Tambah transaksi baru
     public function storeTransaksi(Request $request)
     {
         $request->validate([
             'tanggal' => 'required|date',
             'total' => 'required|integer|min:0',
+            'kategori_id' => 'required|exists:kategori_pengeluarans,id',
             'items' => 'nullable|array',
             'items.*.nama' => 'required_with:items|string|max:255',
             'items.*.qty' => 'required_with:items|integer|min:1',
@@ -23,10 +25,11 @@ class TransaksiController extends Controller
         try {
             DB::beginTransaction();
 
-            // Simpan nota utama
-            $nota = Pengeluaran::create([
+            // Simpan pengeluaran utama
+            $pengeluaran = Pengeluaran::create([
                 'user_id' => $request->user()->id,
-                'filename' => '',
+                'kategori_id' => $request->kategori_id,
+                'filename' => '', // kosong karena input manual
                 'tanggal' => $request->tanggal,
                 'total' => $request->total,
             ]);
@@ -35,7 +38,7 @@ class TransaksiController extends Controller
             if ($request->has('items')) {
                 foreach ($request->items as $item) {
                     PengeluaranItem::create([
-                        'nota_id' => $nota->id,
+                        'pengeluaran_id' => $pengeluaran->id,
                         'nama' => $item['nama'],
                         'qty' => $item['qty'],
                         'harga' => $item['harga'],
@@ -43,13 +46,11 @@ class TransaksiController extends Controller
                 }
             }
 
-            // 🔽 Kurangi gaji user
+            // 🔽 Kurangi gaji bulanan user
             $user = $request->user();
             $sisaGaji = $user->gaji_bulanan - $request->total;
 
-            // Pastikan tidak minus
             if ($sisaGaji < 0) $sisaGaji = 0;
-
             $user->update(['gaji_bulanan' => $sisaGaji]);
 
             DB::commit();
@@ -57,7 +58,7 @@ class TransaksiController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Transaksi berhasil disimpan dan gaji bulanan dikurangi.',
-                'nota' => $nota->load('items'),
+                'pengeluaran' => $pengeluaran->load('items', 'kategori'),
                 'sisa_gaji' => $sisaGaji,
             ]);
         } catch (\Throwable $e) {
@@ -70,55 +71,55 @@ class TransaksiController extends Controller
         }
     }
 
-
     // ✅ Update transaksi milik user
     public function updateTransaksi(Request $request, $id)
     {
         $request->validate([
             'tanggal' => 'nullable|date',
             'total' => 'nullable|integer|min:0',
+            'kategori_id' => 'nullable|exists:kategori_pengeluarans,id',
         ]);
 
-        $nota = Pengeluaran::where('id', $id)
+        $pengeluaran = Pengeluaran::where('id', $id)
             ->where('user_id', $request->user()->id)
             ->first();
 
-        if (!$nota) {
+        if (!$pengeluaran) {
             return response()->json(['success' => false, 'message' => 'Transaksi tidak ditemukan.'], 404);
         }
 
-        $nota->update($request->only(['tanggal', 'total']));
+        $pengeluaran->update($request->only(['tanggal', 'total', 'kategori_id']));
 
-        return response()->json(['success' => true, 'nota' => $nota]);
+        return response()->json(['success' => true, 'pengeluaran' => $pengeluaran]);
     }
 
     // ✅ Hapus transaksi milik user
     public function deleteTransaksi(Request $request, $id)
     {
-        $nota = Pengeluaran::where('id', $id)
+        $pengeluaran = Pengeluaran::where('id', $id)
             ->where('user_id', $request->user()->id)
             ->first();
 
-        if (!$nota) {
+        if (!$pengeluaran) {
             return response()->json(['success' => false, 'message' => 'Transaksi tidak ditemukan.'], 404);
         }
 
-        $nota->delete();
+        $pengeluaran->delete();
 
         return response()->json(['success' => true, 'message' => 'Transaksi berhasil dihapus.']);
     }
 
-    // ✅ Ambil semua nota milik user login
+    // ✅ Ambil semua transaksi milik user login
     public function getTransaksi(Request $request)
     {
-        $notas = Pengeluaran::with('items')
+        $pengeluarans = Pengeluaran::with(['items', 'kategori'])
             ->where('user_id', $request->user()->id)
             ->orderBy('tanggal', 'desc')
             ->get();
 
         return response()->json([
             'success' => true,
-            'notas' => $notas,
+            'pengeluarans' => $pengeluarans,
         ]);
     }
 }

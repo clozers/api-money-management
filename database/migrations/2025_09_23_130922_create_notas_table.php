@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('notas', function (Blueprint $table) {
+        Schema::create('pengeluarans', function (Blueprint $table) {
             $table->id();
             $table->string('filename'); // nama file nota
             $table->date('tanggal'); // tanggal nota
@@ -19,6 +19,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('notas');
+        Schema::dropIfExists('pengeluarans');
     }
 };

@@ -83,11 +83,25 @@ class ScantransaksiController extends Controller
             $aiData = ["total" => 0, "items" => []];
         }
 
-        // Koreksi harga terlalu kecil (misal hasil OCR 53 → jadi 53000)
+        // 🔹 Koreksi harga terlalu kecil
         foreach ($aiData['items'] ?? [] as &$item) {
             if (($item['harga'] ?? 0) < 1000 && ($item['harga'] ?? 0) > 0) {
                 $item['harga'] = $item['harga'] * 1000;
             }
+        }
+
+        // 🔹 Deteksi kategori otomatis
+        $kategori_id = 3; // default (lainnya)
+        $itemsText = strtolower(json_encode($aiData['items'] ?? []));
+
+        // Jika ada kata yang mengindikasikan makanan/minuman
+        if (preg_match('/(nasi|ayam|kopi|coffee|latte|americano|teh|milk|drink|minum|makan|warung|resto|kfc|pizza|bakso|pecel|es|ice|Darmi)/i', $itemsText)) {
+            $kategori_id = 1; // makanan/minuman
+        }
+
+        // Jika ada kata yang mengindikasikan bensin/SPBU
+        elseif (preg_match('/(pertalite|pertamax|bensin|bbm|spbu|shell|dexlite|solar|fuel)/i', $itemsText)) {
+            $kategori_id = 2; // bensin
         }
 
         try {
@@ -96,6 +110,7 @@ class ScantransaksiController extends Controller
             // 🔹 Simpan ke tabel nota
             $nota = Pengeluaran::create([
                 'user_id' => $request->user()->id,
+                'kategori_id' => $kategori_id,
                 'filename' => $storedPath,
                 'tanggal'  => now()->format('Y-m-d'),
                 'total'    => $aiData['total'] ?? 0,
@@ -104,14 +119,14 @@ class ScantransaksiController extends Controller
             // 🔹 Simpan item nota
             foreach ($aiData['items'] ?? [] as $item) {
                 PengeluaranItem::create([
-                    'nota_id' => $nota->id,
+                    'pengeluaran_id' => $nota->id,
                     'nama'    => $item['nama'] ?? '-',
                     'qty'     => $item['qty'] ?? 1,
                     'harga'   => $item['harga'] ?? 0,
                 ]);
             }
 
-            // 🔽 Kurangi gaji user sesuai total pengeluaran
+            // 🔽 Kurangi gaji user
             $user = $request->user();
             $totalPengeluaran = $aiData['total'] ?? 0;
             $sisaGaji = $user->gaji_bulanan - $totalPengeluaran;
@@ -127,6 +142,7 @@ class ScantransaksiController extends Controller
                 'message' => 'Scan nota berhasil, data disimpan dan gaji dikurangi.',
                 'nota' => $nota->load('items'),
                 'sisa_gaji' => $sisaGaji,
+                'kategori_id' => $kategori_id
             ]);
         } catch (\Throwable $e) {
             DB::rollBack();
