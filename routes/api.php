@@ -6,6 +6,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\ScantransaksiController;
 use App\Http\Controllers\TransaksiController;
+use App\Http\Controllers\UserController;
 
 // Auth routes
 Route::post('/login', [AuthController::class, 'login']);
@@ -14,7 +15,8 @@ Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanc
 
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/user', fn(Request $request) => $request->user());
+    Route::get('/user', [UserController::class, 'getUser']);
+    Route::put('/user/update/{id}', [UserController::class, 'updateUser']);
 
     // Scan nota pakai AI (OCR)
     Route::post('/scan-transaksi', [ScantransaksiController::class, 'scanNota']);
