@@ -16,7 +16,8 @@ Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanc
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', [UserController::class, 'getUser']);
-    Route::put('/user/update/{id}', [UserController::class, 'updateUser']);
+    Route::apiResource('users', UserController::class);
+
 
     // Scan nota pakai AI (OCR)
     Route::post('/scan-transaksi', [ScantransaksiController::class, 'scanNota']);
