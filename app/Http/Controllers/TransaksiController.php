@@ -16,6 +16,7 @@ class TransaksiController extends Controller
             'tanggal' => 'required|date',
             'total' => 'required|integer|min:0',
             'kategori_id' => 'required|exists:kategori_pengeluarans,id',
+            'catatan' => 'nullable|string', // ⬅️ DITAMBAH
             'items' => 'nullable|array',
             'items.*.nama' => 'required_with:items|string|max:255',
             'items.*.qty' => 'required_with:items|integer|min:1',
@@ -32,6 +33,7 @@ class TransaksiController extends Controller
                 'filename' => '', // kosong karena input manual
                 'tanggal' => $request->tanggal,
                 'total' => $request->total,
+                'catatan' => $request->catatan, // ⬅️ DITAMBAH
             ]);
 
             // Simpan item jika ada
@@ -78,6 +80,7 @@ class TransaksiController extends Controller
             'tanggal' => 'nullable|date',
             'total' => 'nullable|integer|min:0',
             'kategori_id' => 'nullable|exists:kategori_pengeluarans,id',
+            'catatan' => 'nullable|string', // ⬅️ DITAMBAH
         ]);
 
         $pengeluaran = Pengeluaran::where('id', $id)
@@ -88,7 +91,7 @@ class TransaksiController extends Controller
             return response()->json(['success' => false, 'message' => 'Transaksi tidak ditemukan.'], 404);
         }
 
-        $pengeluaran->update($request->only(['tanggal', 'total', 'kategori_id']));
+        $pengeluaran->update($request->only(['tanggal', 'total', 'kategori_id', 'catatan'])); // ⬅️ `catatan` ditambah
 
         return response()->json(['success' => true, 'pengeluaran' => $pengeluaran]);
     }

@@ -13,7 +13,8 @@ class ScantransaksiController extends Controller
     public function scanNota(Request $request)
     {
         $request->validate([
-            'nota' => 'required|image|mimes:jpg,jpeg,png'
+            'nota' => 'required|image|mimes:jpg,jpeg,png',
+            'catatan' => 'nullable|string'
         ]);
 
         $storedPath  = $request->file('nota')->store('notas', 'public');
@@ -114,6 +115,7 @@ class ScantransaksiController extends Controller
                 'filename' => $storedPath,
                 'tanggal'  => now()->format('Y-m-d'),
                 'total'    => $aiData['total'] ?? 0,
+                'catatan'  => $request->catatan,
             ]);
 
             // 🔹 Simpan item nota

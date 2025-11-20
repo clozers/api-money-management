@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Pengeluaran extends Model
 {
-    protected $fillable = ['user_id', 'filename', 'tanggal', 'total', 'kategori_id'];
+    protected $fillable = ['user_id', 'filename', 'tanggal', 'catatan', 'total', 'kategori_id'];
 
     public function items()
     {
