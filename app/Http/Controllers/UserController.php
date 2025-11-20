@@ -11,10 +11,15 @@ class UserController extends Controller
         return response()->json($request->user());
     }
 
-    public function updateUser(Request $request)
+    public function update(Request $request)
     {
         $user = $request->user();
-        $data = $request->only(['name', 'email']);
+
+        $data = $request->only([
+            'name',
+            'email',
+            'gaji_bulanan',
+        ]);
 
         $user->update($data);
 
