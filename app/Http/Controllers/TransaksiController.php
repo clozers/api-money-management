@@ -13,10 +13,10 @@ class TransaksiController extends Controller
     public function storeTransaksi(Request $request)
     {
         $request->validate([
-            'tanggal' => 'required|date',
+            'tanggal' => 'nullable|date', // ⬅️ ubah: jadi boleh null
             'total' => 'required|integer|min:0',
             'kategori_id' => 'required|exists:kategori_pengeluarans,id',
-            'catatan' => 'nullable|string', // ⬅️ DITAMBAH
+            'catatan' => 'nullable|string',
             'items' => 'nullable|array',
             'items.*.nama' => 'required_with:items|string|max:255',
             'items.*.qty' => 'required_with:items|integer|min:1',
@@ -26,14 +26,17 @@ class TransaksiController extends Controller
         try {
             DB::beginTransaction();
 
+            // ⬅️ AUTO: kalau tidak dikirim, pakai tanggal hari ini
+            $tanggal = $request->tanggal ?? now()->format('Y-m-d');
+
             // Simpan pengeluaran utama
             $pengeluaran = Pengeluaran::create([
                 'user_id' => $request->user()->id,
                 'kategori_id' => $request->kategori_id,
-                'filename' => '', // kosong karena input manual
-                'tanggal' => $request->tanggal,
+                'filename' => '',
+                'tanggal' => $tanggal,
                 'total' => $request->total,
-                'catatan' => $request->catatan, // ⬅️ DITAMBAH
+                'catatan' => $request->catatan,
             ]);
 
             // Simpan item jika ada
@@ -80,7 +83,7 @@ class TransaksiController extends Controller
             'tanggal' => 'nullable|date',
             'total' => 'nullable|integer|min:0',
             'kategori_id' => 'nullable|exists:kategori_pengeluarans,id',
-            'catatan' => 'nullable|string', // ⬅️ DITAMBAH
+            'catatan' => 'nullable|string',
         ]);
 
         $pengeluaran = Pengeluaran::where('id', $id)
@@ -91,7 +94,7 @@ class TransaksiController extends Controller
             return response()->json(['success' => false, 'message' => 'Transaksi tidak ditemukan.'], 404);
         }
 
-        $pengeluaran->update($request->only(['tanggal', 'total', 'kategori_id', 'catatan'])); // ⬅️ `catatan` ditambah
+        $pengeluaran->update($request->only(['tanggal', 'total', 'kategori_id', 'catatan']));
 
         return response()->json(['success' => true, 'pengeluaran' => $pengeluaran]);
     }
