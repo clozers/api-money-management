@@ -13,9 +13,10 @@ class TransaksiController extends Controller
     public function storeTransaksi(Request $request)
     {
         $request->validate([
-            'tanggal' => 'nullable|date', // ⬅️ ubah: jadi boleh null
+            'tanggal' => 'nullable|date',
             'total' => 'required|integer|min:0',
             'kategori_id' => 'required|exists:kategori_pengeluarans,id',
+            'judul' => 'nullable|string|max:255', // ⬅️ TAMBAH
             'catatan' => 'nullable|string',
             'items' => 'nullable|array',
             'items.*.nama' => 'required_with:items|string|max:255',
@@ -26,7 +27,6 @@ class TransaksiController extends Controller
         try {
             DB::beginTransaction();
 
-            // ⬅️ AUTO: kalau tidak dikirim, pakai tanggal hari ini
             $tanggal = $request->tanggal ?? now()->format('Y-m-d');
 
             // Simpan pengeluaran utama
@@ -36,6 +36,7 @@ class TransaksiController extends Controller
                 'filename' => '',
                 'tanggal' => $tanggal,
                 'total' => $request->total,
+                'judul' => $request->judul, // ⬅️ TAMBAH
                 'catatan' => $request->catatan,
             ]);
 
@@ -51,7 +52,7 @@ class TransaksiController extends Controller
                 }
             }
 
-            // 🔽 Kurangi gaji bulanan user
+            // Kurangi gaji bulanan user
             $user = $request->user();
             $sisaGaji = $user->gaji_bulanan - $request->total;
 
@@ -83,6 +84,7 @@ class TransaksiController extends Controller
             'tanggal' => 'nullable|date',
             'total' => 'nullable|integer|min:0',
             'kategori_id' => 'nullable|exists:kategori_pengeluarans,id',
+            'judul' => 'nullable|string|max:255', // ⬅️ TAMBAH
             'catatan' => 'nullable|string',
         ]);
 
@@ -94,12 +96,18 @@ class TransaksiController extends Controller
             return response()->json(['success' => false, 'message' => 'Transaksi tidak ditemukan.'], 404);
         }
 
-        $pengeluaran->update($request->only(['tanggal', 'total', 'kategori_id', 'catatan']));
+        $pengeluaran->update($request->only([
+            'tanggal',
+            'total',
+            'kategori_id',
+            'judul',   // ⬅️ TAMBAH
+            'catatan'
+        ]));
 
         return response()->json(['success' => true, 'pengeluaran' => $pengeluaran]);
     }
 
-    // ✅ Hapus transaksi milik user
+    // ❤️ Tidak diubah sama sekali
     public function deleteTransaksi(Request $request, $id)
     {
         $pengeluaran = Pengeluaran::where('id', $id)
@@ -115,7 +123,7 @@ class TransaksiController extends Controller
         return response()->json(['success' => true, 'message' => 'Transaksi berhasil dihapus.']);
     }
 
-    // ✅ Ambil semua transaksi milik user login
+    // ❤️ Tidak diubah sama sekali
     public function getTransaksi(Request $request)
     {
         $pengeluarans = Pengeluaran::with(['items', 'kategori'])

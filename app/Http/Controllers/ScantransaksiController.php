@@ -95,14 +95,27 @@ class ScantransaksiController extends Controller
         $kategori_id = 3; // default (lainnya)
         $itemsText = strtolower(json_encode($aiData['items'] ?? []));
 
-        // Jika ada kata yang mengindikasikan makanan/minuman
-        if (preg_match('/(nasi|ayam|kopi|coffee|latte|americano|teh|milk|drink|minum|makan|warung|resto|kfc|pizza|bakso|pecel|es|ice|Darmi)/i', $itemsText)) {
+        if (preg_match('/(nasi|ayam|kopi|coffee|latte|americano|teh|milk|drink|minum|makan|warung|resto|kfc|pizza|bakso|pecel|es|ice|darmi)/i', $itemsText)) {
             $kategori_id = 1; // makanan/minuman
+        } elseif (preg_match('/(pertalite|pertamax|bensin|bbm|spbu|shell|dexlite|solar|fuel)/i', $itemsText)) {
+            $kategori_id = 2; // bensin
         }
 
-        // Jika ada kata yang mengindikasikan bensin/SPBU
-        elseif (preg_match('/(pertalite|pertamax|bensin|bbm|spbu|shell|dexlite|solar|fuel)/i', $itemsText)) {
-            $kategori_id = 2; // bensin
+        // 🔹 Generate judul otomatis
+        $judul = null;
+
+        // Jika punya item → pakai nama item pertama
+        if (!empty($aiData['items']) && isset($aiData['items'][0]['nama'])) {
+            $judul = $aiData['items'][0]['nama'];
+        }
+        // Jika tidak ada item → ambil 2 kata dari catatan
+        elseif (!empty($request->catatan)) {
+            $words = explode(' ', trim($request->catatan));
+            $judul = implode(' ', array_slice($words, 0, 2));
+        }
+        // Default
+        else {
+            $judul = 'Scan Nota';
         }
 
         try {
@@ -115,6 +128,7 @@ class ScantransaksiController extends Controller
                 'filename' => $storedPath,
                 'tanggal'  => now()->format('Y-m-d'),
                 'total'    => $aiData['total'] ?? 0,
+                'judul'    => $judul,          // ⬅️ Judul otomatis
                 'catatan'  => $request->catatan,
             ]);
 
