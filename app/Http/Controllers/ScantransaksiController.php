@@ -24,7 +24,7 @@ class ScantransaksiController extends Controller
 
         // 🔹 Panggil Gemini API
         $response = Http::post(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" . env('GEMINI_API_KEY'),
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" . env('GEMINI_API_KEY'),
             [
                 "contents" => [[
                     "parts" => [
