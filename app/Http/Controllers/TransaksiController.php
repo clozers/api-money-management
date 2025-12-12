@@ -207,10 +207,39 @@ class TransaksiController extends Controller
             return response()->json(['success' => false, 'message' => 'Transaksi tidak ditemukan.'], 404);
         }
 
-        $pengeluaran->delete();
+        try {
+            DB::beginTransaction();
 
-        return response()->json(['success' => true, 'message' => 'Transaksi berhasil dihapus.']);
+            $user = $request->user();
+
+            // Kembalikan gaji yang pernah dikurangi
+            $user->gaji_bulanan += (int)$pengeluaran->total;
+            $user->save();
+
+            // Hapus item dulu (biar rapi meskipun cascading bisa saja)
+            $pengeluaran->items()->delete();
+
+            // Hapus transaksi
+            $pengeluaran->delete();
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Transaksi berhasil dihapus & gaji dikembalikan.',
+                'sisa_gaji' => $user->gaji_bulanan
+            ]);
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menghapus transaksi',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
+
 
     // ❤️ Tidak diubah sama sekali
     public function getTransaksi(Request $request)
