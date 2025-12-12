@@ -16,7 +16,7 @@ class TransaksiController extends Controller
             'tanggal' => 'nullable|date',
             'total' => 'required|integer|min:0',
             'kategori_id' => 'required|exists:kategori_pengeluarans,id',
-            'judul' => 'nullable|string|max:255', // ⬅️ TAMBAH
+            'judul' => 'nullable|string|max:255',
             'catatan' => 'nullable|string',
             'items' => 'nullable|array',
             'items.*.nama' => 'required_with:items|string|max:255',
@@ -36,7 +36,7 @@ class TransaksiController extends Controller
                 'filename' => '',
                 'tanggal' => $tanggal,
                 'total' => $request->total,
-                'judul' => $request->judul, // ⬅️ TAMBAH
+                'judul' => $request->judul,
                 'catatan' => $request->catatan,
             ]);
 
@@ -52,20 +52,18 @@ class TransaksiController extends Controller
                 }
             }
 
-            // Kurangi gaji bulanan user
+            // Kurangi sisa_gaji user (gaji_bulanan tetap)
             $user = $request->user();
-            $sisaGaji = $user->gaji_bulanan - $request->total;
-
-            if ($sisaGaji < 0) $sisaGaji = 0;
-            $user->update(['gaji_bulanan' => $sisaGaji]);
+            $user->sisa_gaji = max(0, (int)$user->sisa_gaji - (int)$request->total);
+            $user->save();
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Transaksi berhasil disimpan dan gaji bulanan dikurangi.',
+                'message' => 'Transaksi berhasil disimpan dan sisa_gaji dikurangi.',
                 'pengeluaran' => $pengeluaran->load('items', 'kategori'),
-                'sisa_gaji' => $sisaGaji,
+                'sisa_gaji' => $user->sisa_gaji,
             ]);
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -111,18 +109,17 @@ class TransaksiController extends Controller
                 $incomingItems = $request->items;
                 $processedIds = [];
 
-                // Hitung total baru berdasarkan items (kebijakan: total dihitung dari items)
+                // Hitung total baru berdasarkan items (kebijakan default)
                 $calculatedTotal = 0;
                 foreach ($incomingItems as $it) {
                     $calculatedTotal += ((int)$it['qty']) * ((int)$it['harga']);
                 }
 
-                // Update / create items
+                // Update / create items (ambil existing milik pengeluaran ini)
                 $existingItems = PengeluaranItem::where('pengeluaran_id', $pengeluaran->id)->get()->keyBy('id');
 
                 foreach ($incomingItems as $it) {
-                    if (isset($it['id']) && $it['id'] && $existingItems->has($it['id'])) {
-                        // update existing
+                    if (!empty($it['id']) && $existingItems->has($it['id'])) {
                         $itemModel = $existingItems->get($it['id']);
                         $itemModel->update([
                             'nama' => $it['nama'],
@@ -131,7 +128,6 @@ class TransaksiController extends Controller
                         ]);
                         $processedIds[] = $itemModel->id;
                     } else {
-                        // create new
                         $newItem = PengeluaranItem::create([
                             'pengeluaran_id' => $pengeluaran->id,
                             'nama' => $it['nama'],
@@ -142,40 +138,32 @@ class TransaksiController extends Controller
                     }
                 }
 
-                // Hapus item yang tidak dikirim lagi (dianggap dihapus oleh user)
-                $toDelete = $existingItems->keys()->filter(function ($existingId) use ($processedIds) {
-                    return !in_array($existingId, $processedIds);
-                })->all();
+                // Hapus item yang tidak dikirim lagi (milik pengeluaran ini)
+                PengeluaranItem::where('pengeluaran_id', $pengeluaran->id)
+                    ->whereNotIn('id', $processedIds)
+                    ->delete();
 
-                if (!empty($toDelete)) {
-                    PengeluaranItem::whereIn('id', $toDelete)->delete();
-                }
-
-                // Set total baru berdasarkan perhitungan items
-                $newTotal = $calculatedTotal;
+                // Set total baru: jika user kirim total manual pakai itu, kalau tidak pakai calculated
+                $newTotal = $request->has('total') ? (int)$request->total : $calculatedTotal;
             } else {
-                // Jika tidak ada items yang dikirim, gunakan total dari request jika ada, atau tetap total lama
+                // Tidak ada items: gunakan total dari request jika ada, atau tetap total lama
                 $newTotal = $request->has('total') ? (int)$request->total : (int)$pengeluaran->total;
             }
 
             // Update pengeluaran (tanggal, kategori, judul, catatan, total)
-            $updateData = array_filter([
+            $pengeluaran->update([
                 'tanggal' => $request->tanggal ?? $pengeluaran->tanggal,
                 'total' => $newTotal,
                 'kategori_id' => $request->kategori_id ?? $pengeluaran->kategori_id,
                 'judul' => $request->judul ?? $pengeluaran->judul,
                 'catatan' => $request->catatan ?? $pengeluaran->catatan,
-            ], function ($v) { return $v !== null; });
+            ]);
 
-            $pengeluaran->update($updateData);
-
-            // Sesuaikan gaji bulanan user berdasarkan selisih total
+            // Sesuaikan sisa_gaji user berdasarkan selisih total
             $user = $request->user();
-            $delta = $newTotal - $oldTotal; // jika positif -> kurangi gaji, jika negatif -> tambahkan kembali
-            $sisaGaji = $user->gaji_bulanan - $delta;
-
-            if ($sisaGaji < 0) $sisaGaji = 0;
-            $user->update(['gaji_bulanan' => $sisaGaji]);
+            $delta = $newTotal - $oldTotal; // positif -> kurangi lagi; negatif -> tambahkan kembali
+            $user->sisa_gaji = max(0, (int)$user->sisa_gaji - $delta);
+            $user->save();
 
             DB::commit();
 
@@ -183,7 +171,7 @@ class TransaksiController extends Controller
                 'success' => true,
                 'message' => 'Transaksi berhasil diperbarui.',
                 'pengeluaran' => $pengeluaran->load('items', 'kategori'),
-                'sisa_gaji' => $sisaGaji,
+                'sisa_gaji' => $user->sisa_gaji,
             ]);
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -195,8 +183,7 @@ class TransaksiController extends Controller
         }
     }
 
-
-    // ❤️ Tidak diubah sama sekali
+    // Delete transaksi + kembalikan sisa_gaji
     public function deleteTransaksi(Request $request, $id)
     {
         $pengeluaran = Pengeluaran::where('id', $id)
@@ -212,11 +199,11 @@ class TransaksiController extends Controller
 
             $user = $request->user();
 
-            // Kembalikan gaji yang pernah dikurangi
-            $user->gaji_bulanan += (int)$pengeluaran->total;
+            // Kembalikan sisa_gaji sebesar total transaksi yang dihapus
+            $user->sisa_gaji = (int)$user->sisa_gaji + (int)$pengeluaran->total;
             $user->save();
 
-            // Hapus item dulu (biar rapi meskipun cascading bisa saja)
+            // Hapus item dulu (rapi)
             $pengeluaran->items()->delete();
 
             // Hapus transaksi
@@ -226,8 +213,8 @@ class TransaksiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Transaksi berhasil dihapus & gaji dikembalikan.',
-                'sisa_gaji' => $user->gaji_bulanan
+                'message' => 'Transaksi berhasil dihapus & sisa_gaji dikembalikan.',
+                'sisa_gaji' => $user->sisa_gaji
             ]);
 
         } catch (\Throwable $e) {
@@ -240,8 +227,7 @@ class TransaksiController extends Controller
         }
     }
 
-
-    // ❤️ Tidak diubah sama sekali
+    // Get transaksi
     public function getTransaksi(Request $request)
     {
         $pengeluarans = Pengeluaran::with(['items', 'kategori'])
