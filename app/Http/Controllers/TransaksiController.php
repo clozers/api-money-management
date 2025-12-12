@@ -54,7 +54,7 @@ class TransaksiController extends Controller
 
             // Kurangi sisa_gaji user (gaji_bulanan tetap)
             $user = $request->user();
-            $user->sisa_gaji = max(0, (int)$user->sisa_gaji - (int)$request->total);
+            $user->sisa_gaji = max(0, (int)$user->gaji_bulanan - (int)$request->total);
             $user->save();
 
             DB::commit();
