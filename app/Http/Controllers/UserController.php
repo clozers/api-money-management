@@ -3,10 +3,14 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class UserController extends Controller
 {
+    public function getUser(Request $request)
+    {
+        return response()->json($request->user());
+    }
+
     public function update(Request $request)
     {
         $request->validate([
