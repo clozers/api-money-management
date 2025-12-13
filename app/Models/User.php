@@ -24,6 +24,7 @@ class User extends Authenticatable
         'password',
         'gaji_bulanan',
         'sisa_gaji',
+        'tanggal_gajian',
     ];
 
     /**

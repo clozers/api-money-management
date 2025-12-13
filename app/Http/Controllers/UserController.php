@@ -18,6 +18,7 @@ class UserController extends Controller
             'name' => 'nullable|string|max:255',
             'email' => 'nullable|email|max:255',
             'gaji_bulanan' => 'nullable|integer|min:0',
+            'tanggal_gajian' => 'nullable|integer|between:1,31',
         ]);
 
         $user = $request->user();
@@ -28,7 +29,9 @@ class UserController extends Controller
             $data = $request->only([
                 'name',
                 'email',
+                'email',
                 'gaji_bulanan',
+                'tanggal_gajian',
             ]);
 
             // Jika gaji_bulanan dikirim, hitung delta dan sesuaikan sisa_gaji
@@ -46,6 +49,11 @@ class UserController extends Controller
 
                 // update gaji_bulanan juga
                 $user->gaji_bulanan = $newGaji;
+            }
+
+            // Update tanggal gajian
+            if (isset($data['tanggal_gajian'])) {
+                $user->tanggal_gajian = $data['tanggal_gajian'];
             }
 
             // update name/email kalau ada
