@@ -19,6 +19,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/user', [UserController::class, 'getUser']);
     Route::put('/user', [UserController::class, 'update']);
+    Route::post('/user/reset-gaji', [UserController::class, 'resetGaji']);
 
     // Scan nota pakai AI (OCR)
     Route::post('/scan-transaksi', [ScantransaksiController::class, 'scanNota']);

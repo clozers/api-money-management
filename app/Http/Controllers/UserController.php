@@ -69,4 +69,35 @@ class UserController extends Controller
             ], 500);
         }
     }
+    // ✅ Reset Sisa Gaji (misal: awal bulan)
+    public function resetGaji(Request $request)
+    {
+        try {
+            DB::beginTransaction();
+
+            // Gunakan lockForUpdate biar aman
+            $user = \App\Models\User::where('id', $request->user()->id)->lockForUpdate()->first();
+
+            // Reset sisa_gaji ke gaji_bulanan
+            // (Opsional: kalau mau fitur "Tabungan", logic-nya beda lagi)
+            $user->sisa_gaji = $user->gaji_bulanan;
+            $user->save();
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Sisa gaji berhasil di-reset ke nilai gaji bulanan awal.',
+                'sisa_gaji' => $user->sisa_gaji,
+            ]);
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mereset gaji',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
 }
