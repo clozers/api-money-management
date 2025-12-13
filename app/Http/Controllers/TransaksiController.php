@@ -56,7 +56,7 @@ class TransaksiController extends Controller
             // Kurangi sisa_gaji user (dari sisa saat ini)
             // Gunakan lockForUpdate untuk mencegah race condition
             $user = User::where('id', $request->user()->id)->lockForUpdate()->first();
-            $user->sisa_gaji = max(0, (int)$user->sisa_gaji - (int)$request->total);
+            $user->sisa_gaji = (int)$user->sisa_gaji - (int)$request->total;
             $user->save();
 
             DB::commit();
@@ -164,7 +164,7 @@ class TransaksiController extends Controller
             // Sesuaikan sisa_gaji user berdasarkan selisih total
             $user = User::where('id', $request->user()->id)->lockForUpdate()->first();
             $delta = $newTotal - $oldTotal; // positif -> kurangi lagi; negatif -> tambahkan kembali
-            $user->sisa_gaji = max(0, (int)$user->sisa_gaji - $delta);
+            $user->sisa_gaji = (int)$user->sisa_gaji - $delta;
             $user->save();
 
             DB::commit();

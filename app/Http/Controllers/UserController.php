@@ -42,7 +42,7 @@ class UserController extends Controller
                 }
 
                 $delta = $newGaji - $oldGaji; // positif -> tambahkan sisa, negatif -> kurangi sisa
-                $user->sisa_gaji = max(0, (int)$user->sisa_gaji + $delta);
+                $user->sisa_gaji = (int)$user->sisa_gaji + $delta;
 
                 // update gaji_bulanan juga
                 $user->gaji_bulanan = $newGaji;
