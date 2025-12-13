@@ -30,22 +30,14 @@ class ScantransaksiController extends Controller
                     "parts" => [
                         [
                             "text" => "Kamu adalah sistem OCR untuk struk belanja.
-                            Ekstrak detail dari gambar ini dan kembalikan HANYA JSON valid (tanpa teks tambahan).
-                            Format:
-                            {
-                              \"total\": number,
-                              \"items\": [
-                                {\"nama\": string, \"qty\": number, \"harga\": number}
-                              ]
-                            }
-
-                            Aturan:
-                            - Semua angka harga gunakan format ribuan Indonesia (contoh: 53.050 → 53050).
-                            - Jangan ubah titik ribuan menjadi koma desimal.
-                            - Ambil nilai TOTAL/Jumlah Bayar di baris paling bawah struk untuk field 'total'.
-                            - Hanya ambil item utama yang memiliki harga.
-                            - Abaikan sub-item/bawaan paket (seperti rice, egg, chili sauce) yang harganya 0.
-                            - Jangan tulis penjelasan apapun selain JSON."
+                        Ekstrak detail dari gambar ini dan kembalikan HANYA JSON valid.
+                        Format:
+                        {
+                          \"total\": number,
+                          \"items\": [
+                            {\"nama\": string, \"qty\": number, \"harga\": number}
+                          ]
+                        }"
                         ],
                         [
                             "inline_data" => [
@@ -61,103 +53,84 @@ class ScantransaksiController extends Controller
         if (!$response->successful()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal memproses OCR. Silakan coba lagi.'
+                'message' => 'Gagal memproses OCR.'
             ], 500);
         }
 
-        $result = $response->json();
-        $raw    = $result['candidates'][0]['content']['parts'][0]['text'] ?? '{}';
-
+        $raw = $response->json()['candidates'][0]['content']['parts'][0]['text'] ?? '{}';
         $raw = preg_replace('/```(json)?/i', '', $raw);
-        $raw = str_replace('```', '', $raw);
-        $raw = trim($raw);
+        $raw = trim(str_replace('```', '', $raw));
 
-        if (preg_match('/\{.*\}/s', $raw, $matches)) {
-            $jsonText = $matches[0];
-        } else {
-            $jsonText = '{}';
-        }
+        preg_match('/\{.*\}/s', $raw, $matches);
+        $aiData = json_decode($matches[0] ?? '{}', true);
 
-        $aiData = json_decode($jsonText, true);
         if (!$aiData) {
-            \Log::error("Gemini JSON parse gagal:", [$raw]);
             $aiData = ["total" => 0, "items" => []];
         }
 
-        // 🔹 Koreksi harga terlalu kecil
+        // 🔹 Koreksi harga kecil
         foreach ($aiData['items'] ?? [] as &$item) {
             if (($item['harga'] ?? 0) < 1000 && ($item['harga'] ?? 0) > 0) {
-                $item['harga'] = $item['harga'] * 1000;
+                $item['harga'] *= 1000;
             }
         }
 
         // 🔹 Deteksi kategori otomatis
-        $kategori_id = 3; // default (lainnya)
+        $kategori_id = 3;
         $itemsText = strtolower(json_encode($aiData['items'] ?? []));
 
-        if (preg_match('/(nasi|ayam|kopi|coffee|latte|americano|teh|milk|drink|minum|makan|warung|resto|kfc|pizza|bakso|pecel|es|ice|darmi)/i', $itemsText)) {
-            $kategori_id = 1; // makanan/minuman
-        } elseif (preg_match('/(pertalite|pertamax|bensin|bbm|spbu|shell|dexlite|solar|fuel)/i', $itemsText)) {
-            $kategori_id = 2; // bensin
+        if (preg_match('/(nasi|ayam|kopi|coffee|teh|minum|makan|warung|resto|es)/i', $itemsText)) {
+            $kategori_id = 1;
+        } elseif (preg_match('/(pertalite|pertamax|bensin|bbm|spbu|fuel)/i', $itemsText)) {
+            $kategori_id = 2;
         }
 
-        // 🔹 Generate judul otomatis
-        $judul = null;
-
-        // Jika punya item → pakai nama item pertama
-        if (!empty($aiData['items']) && isset($aiData['items'][0]['nama'])) {
-            $judul = $aiData['items'][0]['nama'];
-        }
-        // Jika tidak ada item → ambil 2 kata dari catatan
-        elseif (!empty($request->catatan)) {
-            $words = explode(' ', trim($request->catatan));
-            $judul = implode(' ', array_slice($words, 0, 2));
-        }
-        // Default
-        else {
-            $judul = 'Scan Nota';
-        }
+        // 🔹 Judul otomatis
+        $judul = $aiData['items'][0]['nama'] ?? 'Scan Nota';
 
         try {
             DB::beginTransaction();
 
-            // 🔹 Simpan ke tabel nota
+            // 🔹 Simpan pengeluaran
             $nota = Pengeluaran::create([
                 'user_id' => $request->user()->id,
                 'kategori_id' => $kategori_id,
                 'filename' => $storedPath,
                 'tanggal'  => now()->format('Y-m-d'),
                 'total'    => $aiData['total'] ?? 0,
-                'judul'    => $judul,          // ⬅️ Judul otomatis
+                'judul'    => $judul,
                 'catatan'  => $request->catatan,
             ]);
 
-            // 🔹 Simpan item nota
+            // 🔹 Simpan item
             foreach ($aiData['items'] ?? [] as $item) {
                 PengeluaranItem::create([
                     'pengeluaran_id' => $nota->id,
-                    'nama'    => $item['nama'] ?? '-',
-                    'qty'     => $item['qty'] ?? 1,
-                    'harga'   => $item['harga'] ?? 0,
+                    'nama'  => $item['nama'] ?? '-',
+                    'qty'   => $item['qty'] ?? 1,
+                    'harga' => $item['harga'] ?? 0,
                 ]);
             }
 
-            // 🔽 Kurangi gaji user
+            // 🔽 KURANGI sisa_gaji (bukan gaji_bulanan)
             $user = $request->user();
-            $totalPengeluaran = $aiData['total'] ?? 0;
-            $sisaGaji = $user->gaji_bulanan - $totalPengeluaran;
 
-            if ($sisaGaji < 0) $sisaGaji = 0;
+            // fallback user lama
+            if (is_null($user->sisa_gaji)) {
+                $user->sisa_gaji = (int) $user->gaji_bulanan;
+            }
 
-            $user->update(['gaji_bulanan' => $sisaGaji]);
+            $totalPengeluaran = (int) ($aiData['total'] ?? 0);
+            $user->sisa_gaji = max(0, $user->sisa_gaji - $totalPengeluaran);
+            $user->save();
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Scan nota berhasil, data disimpan dan gaji dikurangi.',
+                'message' => 'Scan nota berhasil & sisa_gaji dikurangi.',
                 'nota' => $nota->load('items'),
-                'sisa_gaji' => $sisaGaji,
+                'sisa_gaji' => $user->sisa_gaji,
                 'kategori_id' => $kategori_id
             ]);
         } catch (\Throwable $e) {
