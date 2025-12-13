@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Pengeluaran;
 use App\Models\PengeluaranItem;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
 class TransaksiController extends Controller
@@ -52,9 +53,10 @@ class TransaksiController extends Controller
                 }
             }
 
-            // Kurangi sisa_gaji user (gaji_bulanan tetap)
-            $user = $request->user();
-            $user->sisa_gaji = max(0, (int)$user->gaji_bulanan - (int)$request->total);
+            // Kurangi sisa_gaji user (dari sisa saat ini)
+            // Gunakan lockForUpdate untuk mencegah race condition
+            $user = User::where('id', $request->user()->id)->lockForUpdate()->first();
+            $user->sisa_gaji = max(0, (int)$user->sisa_gaji - (int)$request->total);
             $user->save();
 
             DB::commit();
@@ -160,7 +162,7 @@ class TransaksiController extends Controller
             ]);
 
             // Sesuaikan sisa_gaji user berdasarkan selisih total
-            $user = $request->user();
+            $user = User::where('id', $request->user()->id)->lockForUpdate()->first();
             $delta = $newTotal - $oldTotal; // positif -> kurangi lagi; negatif -> tambahkan kembali
             $user->sisa_gaji = max(0, (int)$user->sisa_gaji - $delta);
             $user->save();
@@ -197,7 +199,7 @@ class TransaksiController extends Controller
         try {
             DB::beginTransaction();
 
-            $user = $request->user();
+            $user = User::where('id', $request->user()->id)->lockForUpdate()->first();
 
             // Kembalikan sisa_gaji sebesar total transaksi yang dihapus
             $user->sisa_gaji = (int)$user->sisa_gaji + (int)$pengeluaran->total;
